@@ -1,5 +1,5 @@
-// build.jai - Clip Browser
-// 10 April 2026
+// build.jai - EZ Browser
+// 1 August 2026
 // 
 //Start with run.bat to build and launch the game.
 // Options
