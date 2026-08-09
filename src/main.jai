@@ -5,12 +5,12 @@
 
 main_cfg := EngineConfig.{
 	window_title = "ez sdl",
-	window_x = 450,
+	window_x = 300,
 	window_y = 100,
 	window_width = 640,
-	window_height = 1080,
+	window_height = 480,
 	aspect = 640. / 480.,
-	bg_color = Vector4.{0.02, 0.188, 0.02, 1},
+	bg = Vector4.{0.404, 0.059, 0.412, 1},
 	world_width = 640,
 	world_height = 480,
 	font = "OpenSans-BoldItalic.ttf",

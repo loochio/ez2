@@ -9,45 +9,20 @@ game_plugin := EnginePlugin.{
 	proc_render = game_render,
 };
 
+texture : *SDL_Texture;
+
 game_start :: (){
 	log("game start");
+	surface := SDL_LoadBMP("assets/noita.bmp");
+	//surface := SDL_LoadBMP("assets/default.png");
 
-/*
-	SDL_Init(SDL_INIT_VIDEO);
+	if surface == null {
+		log_error("[GAME] Failed to create surface: %", to_string(SDL_GetError()));
+		return;
+	}
 
-    // Create an application window with the following settings:
-    window := SDL_CreateWindow("An SDL2 window",
-        SDL_WINDOWPOS_UNDEFINED, SDL_WINDOWPOS_UNDEFINED, 640, 480,
-        SDL_WINDOW_OPENGL|SDL_WINDOW_SHOWN);
-
-    // Check that the window was successfully created
-    if window == null {
-        // In the case that the window could not be made...
-        print("Could not create window: %\n", to_string(SDL_GetError()));
-        return;
-    }
-
-    exit := false;
-    while !exit {
-        event : SDL_Event;
-        while SDL_PollEvent(*event) {
-            if event.type == {
-                case SDL_QUIT;
-                    exit = true;
-                case SDL_KEYUP;
-                    if event.key.keysym.sym == SDLK_ESCAPE exit = true;
-            }
-        }
-
-        SDL_Delay(1);
-    }
-
-    // Close and destroy the window
-    SDL_DestroyWindow(window);
-
-    // Clean up
-    SDL_Quit();
-    */
+	texture = SDL_CreateTextureFromSurface(window.renderer, surface);
+	assert(texture != null);
 }
 
 game_end :: (){
@@ -55,7 +30,42 @@ game_end :: (){
 }
 
 game_update :: (dt : float) {
+	//ImGui.SetNextWindowPos(.{0, 0});
+	ImGui.Begin("Game Window");
+
+	ImGui.Text("Hello, world!");
+	ImGui.TextColored(GREEN, "Hello, jai-style print: %, %!", 25, "Striiing"); 
+	ImGui.TextColored(RED, "Hello, colored print world: %, %!", 25, "Striiing");
+	ImGui.TextDisabled("Disbled formatted text: %, %!", 25, "Striiing");
+	//ImGui.SliderFloat("float", *f, 0.0, 1.0, "%.3f");  // Edit 1 float as a slider from 0.0f to 1.0f
+	//ImGui.ColorEdit3("clear color", *clear_color.xyz.component);  // Edit 3 floats as a color
+	//if ImGui.Button("Demo Window", size=.{0,0}) show_demo_window ^= true;       // Use buttons to toggle our bools. We could use Checkbox() as well.
+	//if ImGui.Button("Another Window", size=.{0,0}) show_another_window ^= true;
+	//ImGui.Text("Application average %.3f ms/frame (%.1f FPS)", 1000.0 / io.Framerate, io.Framerate);
+
+	if ImGui.Button("TEST") {
+		log("button test");
+	}
+	ImGui.End();
 }
 
 game_render:: (dt : float){
+	//r := cast(u8)(config.bg.x*255);
+	//g := cast(u8)(config.bg.y*255);
+	//b := cast(u8)(config.bg.z*255);
+	//a := cast(u8)(config.bg.w*255);
+	//SDL_SetRenderDrawColor(window.renderer, r, g, b, a);
+	//SDL_RenderClear(window.renderer);
+//
+	//dest : SDL_Rect;
+	//dest.x = 0;
+	//dest.y = 0;
+	//dest.w = 64;
+	//dest.h = 64;
+	//SDL_QueryTexture(texture, null, null, *dest.x, *dest.y);
+	//SDL_RenderCopy(window.renderer, texture, null, *dest);
+//
+	////rect := SDL_Rect.{20, 20, 100, 100};
+	////SDL_RenderDrawRect(window.renderer, *rect);
+	//SDL_RenderPresent(window.renderer);
 }

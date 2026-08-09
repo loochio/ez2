@@ -27,26 +27,27 @@ lua interpretter
 
 #import "Darkmoon"; // lua
 
+#import "GL";
 #import "SDL";
+#load "imgui_sdl_gl.jai";
 
 //#import "Window_Creation"; @CLEAN
 //#import "Input"; //@CLEAN
 
-#import "Simp";
-#import "GL";
-#import "GetRect";
+//#import "Simp";
+//#import "GetRect";
 using Sound :: #import "Sound_Player"; //@CLEAN
 
 
 
 EngineConfig :: struct {
 	window_title : string = "Default";
-	window_x := 0;
-	window_y := 0;
-	window_width := 640;
-	window_height := 480;
+	window_x : s32 = 0;
+	window_y : s32 = 0;
+	window_width : s32 = 640;
+	window_height : s32 = 480;
 	aspect : float; 
-	bg_color := WHITE;
+	bg := WHITE;
 	world_width := 640;
 	world_height := 480;
 	font : string;
@@ -72,13 +73,19 @@ EnginePlugin :: struct {
 active_plugin : *EnginePlugin;
 
 WindowState :: struct {
+	sdlwindow : *SDL_Window;
+	renderer : *SDL_Renderer;
 	quit := false;
-	wintype : Window_Type;
 	width := 0;
 	height := 0;
 	center := Vector2.{};
 	aspect := 1.0;
 	camera : Camera;
+	vsync := false;
+	show_debug_info := true;
+	show_terminal := false;
+	time:  float64;
+	fps : float = 0.;
 }
 window : WindowState;
 
@@ -102,36 +109,17 @@ Camera :: struct {
 	zoom := 1.0;
 }
 
-// tick updates
-//@TODO move to WindowState
-last_time:  float64;
-fps_current : float = 0.;
-
-// ui
-//@TODO merge with our Hud :: struct declared below
-hud_font : *Dynamic_Font;
-hud_font_factor := 0.015; // scales the font height based on window size
-hud_font_pixel_height := 0;
-hud_current_theme: s32 = xx Default_Themes.Blood_Vampire;
-hud_theme: Overall_Theme;
-
-//@TODO create a new HUD for debug info
-debug_ui_enabled := true; //@TODO probably clean this up
-terminal_enabled := false;
-
 // Input
 //@TODO move to Input struct
 mouse_pos_window : Vector2;
 input_mod_ctrl := false;
 input_mod_alt := false;
 input_mod_shift := false;
-ui_hit_this_frame := false;
 
 // audio
 //@TODO move to AudioState struct
 mute := false;
 
-DEFAULT_TEXTURE : Texture;
 
 // Colors
 WHITE 		:: Vector4.{1,1,1,1};
@@ -147,11 +135,11 @@ CYAN 		:: Vector4.{0,1,1,1};
 
 
 engine_run :: (cfg : EngineConfig) {
-	log("Running ENGINE core\n");
+	log("[Engine] running core\n");
 
 	#if WAIT_FOR_DEBUGGER {
 		time : s32 = 10000;
-		log("Waiting for debugger, % (ms)\n", time);
+		log("[Engine] Waiting for debugger, % (ms)\n", time);
 		sleep_milliseconds(time);
 	}
 
@@ -170,139 +158,217 @@ engine_run :: (cfg : EngineConfig) {
 	paths.content = join(paths.assets, "/content");
 	paths.scripts = join(paths.assets, "/scripts");
 
-
-	// Window management
+	// SDL Init
 	SDL_Init(SDL_INIT_VIDEO);
 
-	window := SDL_CreateWindow("An SDL2 window",
-        SDL_WINDOWPOS_UNDEFINED, SDL_WINDOWPOS_UNDEFINED, config.window_width, config.window_height,
-        SDL_WINDOW_OPENGL|SDL_WINDOW_SHOWN);
+	window = .{};
+	window.sdlwindow = SDL_CreateWindow(to_c_string(config.window_title),
+        config.window_x, config.window_y, config.window_width, config.window_height,
+        SDL_WINDOW_OPENGL|SDL_WINDOW_RESIZABLE);
 
-	//window = .{};
-	//window.wintype = create_window(window_name=cfg.window_title, 
-	//	width=config.window_width, height=config.window_height,
-	//	window_x = cfg.window_x, window_y = cfg.window_y);
+	 if window.sdlwindow == null {
+        log_error("[Engine] Could not create window: %", to_string(SDL_GetError()));
+        return;
+    }
 
-	//set_render_target(window.wintype);
+	window_resize(config.window_width, config.window_height);
+    SDL_SetHint(SDL_HINT_RENDER_SCALE_QUALITY, "linear");
+    window.renderer = SDL_CreateRenderer(window.sdlwindow, -1, SDL_RendererFlags.ACCELERATED);
+
+    if window.renderer == null {
+    	log_error("[Engine] Failed to create sdl renderer %", to_string(SDL_GetError()));
+    	return;
+    }
+
+    // OpenGL setup
+    gfx_vsync_set(config.vsync);
+    SDL_GL_SetAttribute(SDL_GL_CONTEXT_PROFILE_MASK, xx SDL_GL_CONTEXT_PROFILE_CORE);
+    gl_context := SDL_GL_CreateContext(window.sdlwindow);
+    if !gl_context {
+        log_error("Could not create OpenGL context: %", to_string(SDL_GetError()));
+        exit(1);
+    }
+    gl_load(*gl, SDL_GL_GetProcAddress);
+
+    // ImGUI init
+    log("[Engine] ImGUI version: %", to_string(ImGui.GetVersion()));
+    imgui_context := ImGui.CreateContext();
+    ImGui_ImplSdl_Init(window.sdlwindow);
+    ImGui.StyleColorsClassic();
+    io := ImGui.GetIO();
 
 	// Sound
-	sound_player_init(.{update_from_a_thread = true});
-
-	// load a global default texture
-	if !is_empty(*config.default_texture) {
-		path := tprint("%/%", paths.assets, config.default_texture);
-		texture_load_from_file(*DEFAULT_TEXTURE, path);
-	}
-
-	{ // GetRect initialization
-		ui_init();
-		proc := default_theme_procs[hud_current_theme];
-	    hud_theme = proc();
-	    set_default_theme(hud_theme);
-	    hud_init();
-	}
+	//sound_player_init(.{update_from_a_thread = true});
 	
-	window_resize(config.window_width, config.window_height);
-
-	//@TODO put behind a runtime config, not sure what that default value needs to be
-	if !config.vsync {
-		wglSwapIntervalEXT(0);
-	}
-
 	register_commands();
 	set_plugin(config.startup_plugin);
 
 	while !window.quit {
 		reset_temporary_storage();
 	
-		update_window_events();
-		for event : events_this_frame {
-			if event.type == .QUIT || is_input_pressed(.ESCAPE) {
-	            window.quit = true;
-	            break;
-	        }
-			getrect_handle_event(event);
-	    }
+		event : SDL_Event;
+        while SDL_PollEvent(*event) {
+        	ImGui_ImplSdl_ProcessEvent(*event);
 
-		// window resizing
-		for get_window_resizes() {
-            update_window(it.window);
-            if it.window == window.wintype {
-            	window_resize(it.width, it.height);
+            if event.type == {
+                case SDL_QUIT;
+                    window.quit = true;
+
+                case SDL_KEYUP;
+                    if event.key.keysym.sym == SDLK_ESCAPE {
+                    	window.quit = true;
+                	}
             }
         }
-    	update_mouse();
 
-    	// ~~~ Time ~~~
-		time := seconds_since_init();
-    	dt := cast(float)(time - last_time);
-    	DT_MAX : float : 0.15;
-    	dt = clamp(dt, 0, DT_MAX);
-    	last_time = time;
-    	fps_current = 1 / dt;
+        ImGui_ImplSdl_NewFrame(window.sdlwindow);
+        ImGui.NewFrame();
+
+        //@CLEAN
+		//update_window_events();
+		//for event : events_this_frame {
+		//	if event.type == .QUIT || is_input_pressed(.ESCAPE) {
+	    //        window.quit = true;
+	    //        break;
+	    //    }
+		//	getrect_handle_event(event);
+	    //}
+
+		// window resizing
+		//@TODO sdl implementation
+		//for get_window_resizes() {
+        //    update_window(it.window);
+        //    if it.window == window.wintype {
+        //    	window_resize(it.width, it.height);
+        //    }
+        //}
+    	//update_mouse();
+
+    	// ~~~ Update / Tick / Time ~~~
+    	dt := 1.0;
+    	window.time = 0;
+    	window.fps = 0;
+
+		//time := seconds_since_init();
+    	//dt := cast(float)(time - last_time);
+    	//DT_MAX : float : 0.15;
+    	//dt = clamp(dt, 0, DT_MAX);
+    	//last_time = time;
+    	//fps_current = 1 / dt;
 
     	// UI UPDATE - All UI rendering/polling needs to be handled after this point
-    	ui_hit_this_frame = false;
-		ui_per_frame_update(window.wintype, xx window.width, xx window.height, time);
-		hud_per_frame_update();
+    	//ui_hit_this_frame = false;
+		//@TODO SDL
+		//ui_per_frame_update(window.wintype, xx window.width, xx window.height, time);
+		//hud_per_frame_update();
 
 	    // ~~~ Input (Engine Level) ~~~ 
-	    input_mod_ctrl = is_input_down(.CTRL);
-	    input_mod_alt = is_input_down(.ALT);
-	    input_mod_shift = is_input_down(.SHIFT);
+	    //@TODO sdl inputs
+	    //input_mod_ctrl = is_input_down(.CTRL);
+	    //input_mod_alt = is_input_down(.ALT);
+	    //input_mod_shift = is_input_down(.SHIFT);
+//
+	    ////@TODO softcode custom input into .ini maybe?
+	    //// global hotkey map. printable with terminal "hotkeys"
+		//if is_input_pressed(96 /*`*/)  	{ 
+		//	terminal_enabled = !terminal_enabled;
+		//	terminal_id += 1;
+		//}
 
-	    //@TODO softcode custom input into .ini maybe?
-	    // global hotkey map. printable with terminal "hotkeys"
-		if is_input_pressed(96 /*`*/)  	{ 
-			terminal_enabled = !terminal_enabled;
-			terminal_id += 1;
+		active_plugin.proc_update(dt);
+		update_debug_ui();
+
+    	// ~~~ Rendering ~~~ 
+		//r := cast(u8)(config.bg.x*255);
+		//g := cast(u8)(config.bg.y*255);
+		//b := cast(u8)(config.bg.z*255);
+		//a := cast(u8)(config.bg.w*255);
+    	//SDL_SetRenderDrawColor(window.renderer, r, g, b, a);
+		//SDL_RenderClear(window.renderer);
+//
+	    //active_plugin.proc_render(dt);
+	    //SDL_RenderPresent(window.renderer);
+
+		// ImGui Rendering
+    	ImGui.Render();
+	    glViewport(0, 0, xx io.DisplaySize.x, xx io.DisplaySize.y);
+        glClearColor(config.bg.x, config.bg.y, config.bg.z, config.bg.w);
+        glClear(GL_COLOR_BUFFER_BIT);
+
+        active_plugin.proc_render(dt);
+        ImGui_ImplSdl_RenderDrawLists(ImGui.GetDrawData());
+
+        SDL_GL_SwapWindow(window.sdlwindow);
+
+		
+    	//r : u8 = cast(u8)(config.bg.x*255);
+		//g : u8 = cast(u8)(config.bg.y*255);
+		//b : u8 = cast(u8)(config.bg.z*255);
+		//a : u8 = cast(u8)(config.bg.w*255);
+    	////SDL_SetRenderDrawColor(window.renderer, r, g, b, a);
+		////SDL_RenderClear(window.renderer);
+//
+		//active_plugin.proc_render(dt);
+//
+		//SDL_RenderPresent(window.renderer);
+
+		//SDL_SetRenderDrawColor(window.renderer, r, g, b, a);
+		//SDL_RenderClear(window.renderer);
+//
+		//active_plugin.proc_render(dt);
+//
+		//SDL_RenderPresent(window.renderer);
+
+		//SDL_GL_SwapWindow(window.sdlwindow);
+
+		if config.fps_unlimitted {
+			SDL_Delay(1); // 1ms delay
 		}
-
-		// ~~~ Tick ~~~
-		// block input while the terminal is open
-    	if !terminal_enabled {
-    		active_plugin.proc_update(dt);
-    	}
-
-		// ~~~ Rendering ~~~ 
-		clear_render_target(config.bg_color.x, config.bg_color.y, config.bg_color.z, config.bg_color.w);
-		active_plugin.proc_render(dt);
-
-		debug_ui();
-		terminal_rendering();
-		swap_buffers(window.wintype);
-
-    	Sound.update();
-
-		//@TODO proper fps
-		//https://github.com/QuattroMusic/6502-Simulator/blob/main/src/engine/core.jai#L49-L65
-		if !config.fps_unlimitted {
-			delay : s32 = cast(s32)((1.0 / config.fps_target) * 1000);
-			sleep_milliseconds(delay);
+		else {
+			delay := cast(u32)((1.0 / config.fps_target) * 1000);
+			SDL_Delay(delay);
 		}
 	}
 
-	log("Teardown ENGINE core\n");
-	sound_player_shutdown();
+	log("[Engine] teardown core\n");
+	//sound_player_shutdown(); @CLEAN
 	active_plugin.proc_end();
+
+	ImGui_ImplSdl_Shutdown();
+    ImGui.DestroyContext(imgui_context);
+    SDL_GL_DeleteContext(gl_context);
+	SDL_DestroyWindow(window.sdlwindow);
+	SDL_Quit();
 }
 
-debug_ui :: () {
+update_debug_ui :: () {
 	#if !DEVELOPER return;
-	if !debug_ui_enabled return;
+	if !window.show_debug_info return;
 
-	debug_ui :: (line : s64, text : string) {
-		ui_text_line(line, text, horizontal_anchor=.Right, color=RED);
-	}
-	
-	debug_ui(1, "Engine UI");
-	debug_ui(2, tprint("fps=%", formatFloat(fps_current, trailing_width=2)));
-	debug_ui(3, tprint("width=%", window.width));
-	debug_ui(4, tprint("height=%", window.height));
-	debug_ui(5, tprint("aspect=%", window.aspect));
-	debug_ui(6, tprint("camera=%", window.camera.position));
-	debug_ui(7, tprint("zoom=%", window.camera.zoom));
-	debug_ui(8, tprint("plugin=%", active_plugin.name));
+	//ImGui.SetNextWindowPos(Vector2.{window.width-150.0, 0});
+	ImGui.Begin("Engine Debug");
+	ImGui.Text("fps=%", window.fps);
+	ImGui.Text("vsync=%", window.vsync);
+	ImGui.Text("width=%", window.width);
+	ImGui.Text("height=%", window.height);
+	ImGui.Text("center=%", window.center);
+	ImGui.Text("aspect=%", window.aspect);
+	ImGui.Text("vsync=%", window.vsync);
+	ImGui.End();
+
+	//@TODO sdl imgui
+	//debug_ui :: (line : s64, text : string) {
+	//	ui_text_line(line, text, horizontal_anchor=.Right, color=RED);
+	//}
+	//
+	//debug_ui(1, "Engine UI");
+	//debug_ui(2, tprint("fps=%", formatFloat(fps_current, trailing_width=2)));
+	//debug_ui(3, tprint("width=%", window.width));
+	//debug_ui(4, tprint("height=%", window.height));
+	//debug_ui(5, tprint("aspect=%", window.aspect));
+	//debug_ui(6, tprint("camera=%", window.camera.position));
+	//debug_ui(7, tprint("zoom=%", window.camera.zoom));
+	//debug_ui(8, tprint("plugin=%", active_plugin.name));
 }
 
 // ~~~ @Plugins ~~~~
@@ -367,32 +433,34 @@ get_config :: (plugin : string, key : string) -> string {
 
 // ~~~~~~~ @Input ~~~~~~~ 
 
-//@TODO wrap our own button definitions around Key_Code
-is_input_pressed :: (key : Key_Code, consume_input := false) -> bool {
-	result := input_button_states[key] & .START != 0;
+//@TODO port to sdl
+//is_input_pressed :: (key : Key_Code, consume_input := false) -> bool {
+//	result := input_button_states[key] & .START != 0;
+//
+//	if result && consume_input {
+//		input_button_states[key] &= ~.START;
+//	}
+//
+//	return result;
+//}
+//
+//is_input_down :: (key : Key_Code) -> bool {
+//	return input_button_states[key] & .DOWN != 0;
+//}
+//
+//is_input_released :: (key : Key_Code) -> bool {
+//	return input_button_states[key] & .END != 0;
+//}
 
-	if result && consume_input {
-		input_button_states[key] &= ~.START;
-	}
-
-	return result;
-}
-
-is_input_down :: (key : Key_Code) -> bool {
-	return input_button_states[key] & .DOWN != 0;
-}
-
-is_input_released :: (key : Key_Code) -> bool {
-	return input_button_states[key] & .END != 0;
-}
-
-update_mouse :: (){
-	x, y, success := get_mouse_pointer_position();
-	if success {
-		mouse_pos_window.x = cast(float)x;
-		mouse_pos_window.y = cast(float)(window.height - y); // invery mouse y to start at bottom
-	}
-}
+//@TODO SDL 
+//update_mouse :: (){
+//	x, y, success := 0, 0, false;
+//	//x, y, success := get_mouse_pointer_position();
+//	if success {
+//		mouse_pos_window.x = cast(float)x;
+//		mouse_pos_window.y = cast(float)(window.height - y); // invery mouse y to start at bottom
+//	}
+//}
 
 // ~~~~~~~ @Window Management ~~~~~~~ 
 window_resize :: (width : s64, height : s64) {
@@ -411,10 +479,11 @@ window_resize :: (width : s64, height : s64) {
 		window.aspect = window.width / cast(float)config.world_width;
 	}
 
+	//@TODO sdl
 	// update ui data
-	hud_font_pixel_height = cast(s64)(window.height * hud_font_factor);
-	hud_font = get_font_at_size(paths.assets, config.font, hud_font_pixel_height);
-    assert(hud_font != null);
+	//hud_font_pixel_height = cast(s64)(window.height * hud_font_factor);
+	//hud_font = get_font_at_size(paths.assets, config.font, hud_font_pixel_height);
+    //assert(hud_font != null);
 }
 
 window_camera_zoom :: (amount : float) {
@@ -475,6 +544,8 @@ is_url :: (path : string) -> bool {
 }
 
 // ~~~~~~~ @Math / Collision ~~~~~~~ 
+
+EPSILON :: 0.0001;
 
 Transform :: struct {
 	using pos : Vector3;
@@ -627,8 +698,15 @@ vec2 :: (v : Vector3) -> Vector2 {
 	return Vector2.{v.x, v.y};
 }
 
-// ~~~ Graphics ~~~
+// ~~~ @Graphics ~~~
 
+gfx_vsync_set :: (enabled : bool) {
+	window.vsync = enabled;
+	value : s32 = ifx enabled then cast(s32)1 else cast(s32)0;
+	SDL_GL_SetSwapInterval(value);
+}
+
+/*
 ShaderSolid :: enum u32 {
 	Color;
 	ColorNoBlend;
@@ -769,7 +847,7 @@ draw_texture_desired :: (texture : *Texture, window_pos : Vector2, desired : Vec
 	ds := Vector2.{ desired.x / texture.width, desired.y / texture.height }; 
 	draw_texture(texture, window_pos, scale = ds, outline, shader, tint);
 }
-
+*/
 
 // ~~~ Sound ~~~
 
@@ -864,6 +942,7 @@ for_expansion :: (pool : *Pool, body : Code, flags : For_Flags) #expand {
 
 // ~~~ @UI ~~~
 
+/*
 update_ui_hit :: (r : *Rect) {
 	ui_hit_this_frame |= is_inside(mouse_pos_window.x, mouse_pos_window.y, r);
 }
@@ -995,12 +1074,14 @@ hud_text :: (format_string : string, args: .. Any, horizontal_anchor : UIAnchor 
 	ui_text_line(hud.line, format_string, args, horizontal_anchor, color);
 }
 
+*/
+
 
 // ~~~~~ @Termianl ~~~~~
 
 terminal_prompt : string;
 terminal_id : s64;
-terminal_auto_complete := Auto_Complete.{terminal_cmds_auto_complete, null};
+//@TODO sdl / terminal_auto_complete := Auto_Complete.{terminal_cmds_auto_complete, null};
 
 TerminalCommand :: struct {
 	text : string;
@@ -1066,9 +1147,6 @@ register_commands :: () {
 		}
 	});
 
-	register_cmd("toggle_ui", (cmd : TerminalCommand, args: .. Any) { 
-		debug_ui_enabled = !debug_ui_enabled; 
-	});
 	register_cmd("toggle_mute", (cmd : TerminalCommand, args: .. Any) { 
 		toggle_mute(); 
 	});
@@ -1079,8 +1157,9 @@ register_commands :: () {
 
 // Render terminal UI and command processing
 terminal_rendering :: () {
-	if !terminal_enabled  return;
+	if !window.show_terminal return;
 
+	/* @TODO sdl + imgui
 	k := window.height * .1;
 	w := cast(float)window.width;
 	r := get_rect(0, 0, w, hud_font.character_height*1.35);
@@ -1113,6 +1192,7 @@ terminal_rendering :: () {
 			}
 		}
 	}
+	*/
 }
 
 // ~~~~ @Grids ~~~~
