@@ -1,5 +1,5 @@
-// build.jai - EZ Browser
-// 1 August 2026
+// build.jai - Clip Browser
+// 10 April 2026
 // 
 //Start with run.bat to build and launch the game.
 // Options
@@ -7,15 +7,15 @@
 // >run.bat editor
 
 
-EXE_NAME := "clip";
+EXE_NAME := "ez";
 OUTPUT_PATH := "";
 
 TARGET_PLUGIN :: #string DONE
-default_plugin := "browser";
+default_plugin := "game";
 DONE
 
-//TARGET_PLUGIN_EDITOR :: #string DONE
-//default_plugin := "editor";
+//TARGET_PLUGIN_GAME :: #string DONE
+//default_plugin := "game";
 //DONE
 
 DEFINE_DEVELOPER_ON :: #string DONE
@@ -24,6 +24,14 @@ DONE
 
 DEFINE_DEVELOPER_OFF :: #string DONE
 DEVELOPER :: false; 
+DONE
+
+DEFINE_WAIT_FOR_DEBUGGER_ON :: #string DONE
+WAIT_FOR_DEBUGGER :: true;
+DONE
+
+DEFINE_WAIT_FOR_DEBUGGER_OFF :: #string DONE
+WAIT_FOR_DEBUGGER :: false;
 DONE
 
 #run {
@@ -44,22 +52,34 @@ DONE
     // DEVELOPER by default
     dev_define := DEFINE_DEVELOPER_ON;
 
+    wait_for_debugger := false;
+
     for arg: args {
     	print("arg=%\n", arg);
         if arg == {
-          //case "editor";
-          //	add_build_string(TARGET_PLUGIN_EDITOR, workspace);
-          //	print("Building for plugin: [editor]\n");
+          //case "game";
+          //	add_build_string(TARGET_PLUGIN_GAME, workspace);
+          //	print("Building for plugin: [game]\n");
           //	set_default_plugin = true;
 
           case "release";
             dev_define = DEFINE_DEVELOPER_OFF;
+
+          case "wait_for_debugger";
+            wait_for_debugger = true;
         }
     }
 
     if !set_default_plugin {
     	add_build_string(TARGET_PLUGIN, workspace);
-        print("Building for plugin: [browser]\n");
+      print("Building for plugin: [browser]\n");
+    }
+
+    if wait_for_debugger {
+      add_build_string(DEFINE_WAIT_FOR_DEBUGGER_ON, workspace);
+    }
+    else {
+      add_build_string(DEFINE_WAIT_FOR_DEBUGGER_OFF, workspace);
     }
 
     print("Build define [%]\n", dev_define);
