@@ -1,0 +1,12 @@
+# gitignore
+
+.build
+.vs
+*.exe
+*.pdb
+builds
+src/.build
+temp
+
+#dunno if we want to commit this (yet)
+cacert.pem
