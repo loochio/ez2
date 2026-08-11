@@ -55,7 +55,7 @@ EngineConfig :: struct {
 	fps_target := 144;
 	fps_unlimitted := false;
 	vsync := true;
-	plugins : [..] EnginePlugin;
+	plugins : [] EnginePlugin;
 	startup_plugin : string;
 }
 config : EngineConfig;

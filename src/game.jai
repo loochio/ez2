@@ -1,7 +1,7 @@
 // game plugin - ez2 w/ sdl
 // 9 Aug 2026
 
-game_plugin := EnginePlugin.{
+PLUGIN_GAME :: EnginePlugin.{
 	name = "game",
 	proc_start 	= game_start,
 	proc_end 	= game_end,

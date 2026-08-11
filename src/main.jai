@@ -18,17 +18,15 @@ main_cfg := EngineConfig.{
 	vsync = false,
 	fps_target = 144,
 	fps_unlimitted = false,
+	
+	startup_plugin = STARTUP_PLUGIN, // defined in build.jai
+	plugins = EnginePlugin.[
+		PLUGIN_GAME
+	],
 };
 
 main :: () {
-	log("% main start\n", main_cfg.window_title);
-
-	main_cfg.startup_plugin = default_plugin; // default_plugin defined in build.jai
-	//array_add(*main_cfg.plugins, browser_plugin);
-	array_add(*main_cfg.plugins, game_plugin);
-	
 	engine_run(main_cfg);
-	log("[%] main() exitting cleanly.\n", main_cfg.window_title);
 }
 
 #load "engine.jai";

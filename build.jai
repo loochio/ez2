@@ -11,12 +11,8 @@ EXE_NAME := "ez";
 OUTPUT_PATH := "";
 
 TARGET_PLUGIN :: #string DONE
-default_plugin := "game";
+STARTUP_PLUGIN :: "game";
 DONE
-
-//TARGET_PLUGIN_GAME :: #string DONE
-//default_plugin := "game";
-//DONE
 
 DEFINE_DEVELOPER_ON :: #string DONE
 DEVELOPER :: true; 
